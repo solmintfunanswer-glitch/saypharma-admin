@@ -1,17 +1,31 @@
-import { createRoot } from "react-dom/client";
-import Dashboard from "@/pages/Dashboard";
-import "./index.css";
+import { useState } from "react";
+  import { createRoot } from "react-dom/client";
+  import Dashboard from "@/pages/Dashboard";
+  import Products from "@/pages/Products";
+  import Warehouse from "@/pages/Warehouse";
+  import Orders from "@/pages/Orders";
+  import BottomNav, { type Tab } from "@/components/BottomNav";
+  import "./index.css";
 
-function registerSW() {
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     });
   }
-}
 
-registerSW();
+  export default function App() {
+    const [tab, setTab] = useState<Tab>("settings");
 
-export default function App() {
-  return <Dashboard />;
-}
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col">
+        <div className="flex-1 overflow-y-auto pb-20">
+          {tab === "settings"  && <Dashboard />}
+          {tab === "products"  && <Products />}
+          {tab === "warehouse" && <Warehouse />}
+          {tab === "orders"    && <Orders />}
+        </div>
+        <BottomNav active={tab} onChange={setTab} />
+      </div>
+    );
+  }
+  
