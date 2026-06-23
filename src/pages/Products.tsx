@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { getProducts, createProduct, deleteProduct, type Product, type NewProduct } from "@/lib/api";
 
 const EMPTY_FORM: NewProduct = {
-  name: "", active_substance: "", form: "", country: "", age_category: "",
+  name: "", price: 0, active_substance: "", form: "", country: "", age_category: "",
   prescription_required: false, dosage: "", side_effects: "", description: "", image_url: "",
 };
 
@@ -32,12 +32,13 @@ export default function Products() {
 
   useEffect(() => { load(); }, [load]);
 
-  const set = (k: keyof NewProduct, v: string | boolean) =>
+  const set = (k: keyof NewProduct, v: string | boolean | number) =>
     setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { setSaveError("Название препарата обязательно"); return; }
+    if (form.price == null || form.price < 0) { setSaveError("Цена продажи обязательна"); return; }
     setSaveStatus("saving"); setSaveError(null);
     try {
       await createProduct({ ...form, name: form.name.trim() });
@@ -70,7 +71,6 @@ export default function Products() {
 
   return (
     <div className="bg-slate-950 min-h-screen">
-      {/* Header */}
       <header className="pt-safe border-b border-slate-800 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -83,10 +83,10 @@ export default function Products() {
 
       <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
 
-        {/* ── Кнопка открытия формы ── */}
+        {/* Кнопка открытия формы */}
         <button
           onClick={() => { setFormOpen(o => !o); setSaveError(null); }}
-          className="w-full flex items-center justify-between bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-2xl px-5 py-4 transition-colors group"
+          className="w-full flex items-center justify-between bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-2xl px-5 py-4 transition-colors"
         >
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -101,9 +101,10 @@ export default function Products() {
           </svg>
         </button>
 
-        {/* ── Форма добавления ── */}
+        {/* Форма добавления */}
         {formOpen && (
           <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+
             {/* Название */}
             <div>
               <label className={labelCls}>Название препарата <span className="text-red-400">*</span></label>
@@ -111,14 +112,26 @@ export default function Products() {
                 onChange={e => set("name", e.target.value)} />
             </div>
 
+            {/* Цена продажи — обязательное */}
+            <div>
+              <label className={labelCls}>Цена продажи (₸) <span className="text-red-400">*</span></label>
+              <div className="relative">
+                <input
+                  type="number" step="0.01" min="0" placeholder="0.00"
+                  value={form.price === 0 ? "" : form.price}
+                  onChange={e => set("price", parseFloat(e.target.value) || 0)}
+                  className={`${inputCls} pr-8`}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₸</span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
-              {/* Активное вещество */}
               <div>
                 <label className={labelCls}>Активное вещество</label>
                 <input className={inputCls} placeholder="Ибупрофен" value={form.active_substance ?? ""}
                   onChange={e => set("active_substance", e.target.value)} />
               </div>
-              {/* Форма выпуска */}
               <div>
                 <label className={labelCls}>Форма выпуска</label>
                 <input className={inputCls} placeholder="Таблетки" value={form.form ?? ""}
@@ -127,21 +140,18 @@ export default function Products() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {/* Страна */}
               <div>
-                <label className={labelCls}>Страна производства</label>
+                <label className={labelCls}>Страна</label>
                 <input className={inputCls} placeholder="Германия" value={form.country ?? ""}
                   onChange={e => set("country", e.target.value)} />
               </div>
-              {/* Возрастная категория */}
               <div>
-                <label className={labelCls}>Возрастная категория</label>
+                <label className={labelCls}>Возраст</label>
                 <input className={inputCls} placeholder="18+" value={form.age_category ?? ""}
                   onChange={e => set("age_category", e.target.value)} />
               </div>
             </div>
 
-            {/* Рецепт */}
             <label className="flex items-center gap-3 cursor-pointer select-none">
               <div className="relative">
                 <input type="checkbox" className="sr-only" checked={form.prescription_required}
@@ -152,28 +162,24 @@ export default function Products() {
               <span className="text-sm text-slate-300">Требуется рецепт</span>
             </label>
 
-            {/* Дозировка */}
             <div>
               <label className={labelCls}>Рекомендуемая дозировка</label>
               <input className={inputCls} placeholder="400 мг 3 раза в день" value={form.dosage ?? ""}
                 onChange={e => set("dosage", e.target.value)} />
             </div>
 
-            {/* Побочные */}
             <div>
               <label className={labelCls}>Побочные действия</label>
               <textarea className={`${inputCls} resize-none`} rows={2} placeholder="Тошнота, головокружение..." value={form.side_effects ?? ""}
                 onChange={e => set("side_effects", e.target.value)} />
             </div>
 
-            {/* Описание */}
             <div>
               <label className={labelCls}>Описание / инструкция</label>
-              <textarea className={`${inputCls} resize-none`} rows={3} placeholder="Применяется при болях, воспалениях..." value={form.description ?? ""}
+              <textarea className={`${inputCls} resize-none`} rows={3} placeholder="Применяется при болях..." value={form.description ?? ""}
                 onChange={e => set("description", e.target.value)} />
             </div>
 
-            {/* Фото */}
             <div>
               <label className={labelCls}>Ссылка на фото</label>
               <input className={inputCls} placeholder="https://..." value={form.image_url ?? ""}
@@ -202,7 +208,7 @@ export default function Products() {
           </form>
         )}
 
-        {/* ── Список товаров ── */}
+        {/* Список товаров */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
             <h2 className="text-white font-semibold text-sm">Все препараты</h2>
@@ -228,9 +234,6 @@ export default function Products() {
 
           {!loading && !loadError && products.length === 0 && (
             <div className="px-5 py-12 text-center">
-              <svg className="w-10 h-10 text-slate-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
-              </svg>
               <p className="text-slate-500 text-sm">Препараты ещё не добавлены</p>
             </div>
           )}
@@ -239,10 +242,10 @@ export default function Products() {
             <div className="divide-y divide-slate-800">
               {products.map(p => (
                 <div key={p.id} className="px-5 py-4 flex items-start gap-3">
-                  {/* Фото или заглушка */}
                   <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex-shrink-0 overflow-hidden flex items-center justify-center">
                     {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover"
+                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
                     ) : (
                       <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
@@ -250,10 +253,15 @@ export default function Products() {
                     )}
                   </div>
 
-                  {/* Инфо */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-white text-sm font-medium leading-tight truncate">{p.name}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium leading-tight truncate">{p.name}</p>
+                        {/* Цена продажи */}
+                        <p className="text-emerald-400 text-sm font-semibold mt-0.5">
+                          {Number(p.price).toLocaleString("ru-RU", { minimumFractionDigits: 2 })} ₸
+                        </p>
+                      </div>
                       <button
                         onClick={() => handleDelete(p.id)}
                         disabled={deletingId === p.id}

@@ -8,6 +8,9 @@ export interface PharmacySettings {
   longitude: number;
   delivery_radius_km: number;
   max_requests_per_ip_per_day: number;
+  delivery_fee: number;
+  min_order_amount: number;
+  working_hours: string;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +38,7 @@ export async function updateSettings(
 export interface Product {
   id: string;
   name: string;
+  price: number;
   active_substance: string | null;
   form: string | null;
   country: string | null;
@@ -163,6 +167,7 @@ export interface Order {
   status: OrderStatus;
   address: string | null;
   comment: string | null;
+  payment_method: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -180,6 +185,15 @@ export async function updateOrderStatus(id: string, status: OrderStatus): Promis
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
+  });
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+}
+
+export async function updateOrderPayment(id: string, payment_method: string): Promise<void> {
+  const resp = await fetch(`${API_BASE}/supabase/orders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payment_method }),
   });
   if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { getOrders, updateOrderStatus, type Order, type OrderStatus } from "@/lib/api";
+import { getOrders, updateOrderStatus, updateOrderPayment, type Order, type OrderStatus } from "@/lib/api";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   new:         "Новый",
@@ -46,9 +46,26 @@ function formatDate(iso: string) {
   });
 }
 
-function OrderCard({ order, onStatusChange }: { order: Order; onStatusChange: (id: string, s: OrderStatus) => Promise<void> }) {
-  const [open, setOpen]       = useState(false);
-  const [saving, setSaving]   = useState(false);
+const PAYMENT_METHODS = [
+  { value: "cash",   label: "Наличные" },
+  { value: "card",   label: "Карта" },
+  { value: "online", label: "Онлайн" },
+  { value: "kaspi",  label: "Kaspi" },
+];
+
+function paymentLabel(v: string | null) {
+  if (!v) return null;
+  return PAYMENT_METHODS.find(m => m.value === v)?.label ?? v;
+}
+
+function OrderCard({ order, onStatusChange, onPaymentChange }: {
+  order: Order;
+  onStatusChange: (id: string, s: OrderStatus) => Promise<void>;
+  onPaymentChange: (id: string, p: string) => Promise<void>;
+}) {
+  const [open, setOpen]             = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
   const next = NEXT_STATUSES[order.status];
 
   const change = async (s: OrderStatus) => {
@@ -56,6 +73,12 @@ function OrderCard({ order, onStatusChange }: { order: Order; onStatusChange: (i
     await onStatusChange(order.id, s);
     setSaving(false);
     setOpen(false);
+  };
+
+  const changePayment = async (p: string) => {
+    setSavingPayment(true);
+    await onPaymentChange(order.id, p);
+    setSavingPayment(false);
   };
 
   const clientName = order.full_name || [order.first_name, order.last_name].filter(Boolean).join(" ") || "—";
@@ -80,6 +103,9 @@ function OrderCard({ order, onStatusChange }: { order: Order; onStatusChange: (i
           <p className="text-slate-400 text-xs mt-0.5">{order.phone}</p>
           {order.address && (
             <p className="text-slate-500 text-xs mt-0.5 truncate">📍 {order.address}</p>
+          )}
+          {order.payment_method && (
+            <p className="text-slate-500 text-xs mt-0.5">💳 {paymentLabel(order.payment_method)}</p>
           )}
         </div>
         <div className="text-right shrink-0">
@@ -123,6 +149,27 @@ function OrderCard({ order, onStatusChange }: { order: Order; onStatusChange: (i
               <p className="text-slate-300 text-sm">{order.comment}</p>
             </div>
           )}
+
+          {/* Payment method */}
+          <div>
+            <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Способ оплаты</p>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENT_METHODS.map(m => (
+                <button
+                  key={m.value}
+                  onClick={() => changePayment(m.value)}
+                  disabled={savingPayment}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${
+                    order.payment_method === m.value
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+                      : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500 active:opacity-70"
+                  }`}
+                >
+                  {savingPayment && order.payment_method === m.value ? "…" : m.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Status actions */}
           {next.length > 0 && (
@@ -177,6 +224,11 @@ export default function Orders() {
 
   const handleStatusChange = async (id: string, status: OrderStatus) => {
     await updateOrderStatus(id, status);
+    await load(tab);
+  };
+
+  const handlePaymentChange = async (id: string, payment_method: string) => {
+    await updateOrderPayment(id, payment_method);
     await load(tab);
   };
 
@@ -253,7 +305,7 @@ export default function Orders() {
         )}
 
         {!loading && !error && orders.map(o => (
-          <OrderCard key={o.id} order={o} onStatusChange={handleStatusChange} />
+          <OrderCard key={o.id} order={o} onStatusChange={handleStatusChange} onPaymentChange={handlePaymentChange} />
         ))}
       </main>
     </div>

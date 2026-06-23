@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const id = req.query.id as string;
 
   if (req.method === "PATCH") {
-    const allowed = ["status", "comment", "address"];
+    const allowed = ["status", "comment", "address", "payment_method"];
     const patch: Record<string, unknown> = {};
     for (const k of allowed) { if (k in (req.body ?? {})) patch[k] = req.body[k]; }
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: "No valid fields" });
