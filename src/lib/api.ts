@@ -1,6 +1,7 @@
 export const API_BASE = "/api";
 
-// ── Settings ──────────────────────────────────────────────
+// ── Settings ──────────────────────────────────────────────────────────────
+
 export interface PharmacySettings {
   id: string;
   latitude: number;
@@ -13,10 +14,7 @@ export interface PharmacySettings {
 
 export async function getSettings(): Promise<PharmacySettings> {
   const resp = await fetch(`${API_BASE}/supabase/settings`);
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${resp.status}`);
-  }
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
   const { data } = await resp.json();
   if (!data || data.length === 0) throw new Error("Нет данных в таблице pharmacy_settings");
   return data[0];
@@ -27,17 +25,13 @@ export async function updateSettings(
   patch: Partial<Omit<PharmacySettings, "id" | "created_at" | "updated_at">>
 ): Promise<void> {
   const resp = await fetch(`${API_BASE}/supabase/settings/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
   });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${resp.status}`);
-  }
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
 }
 
-// ── Products ──────────────────────────────────────────────
+// ── Products ──────────────────────────────────────────────────────────────
+
 export interface Product {
   id: string;
   name: string;
@@ -58,34 +52,73 @@ export type NewProduct = Omit<Product, "id" | "created_at" | "updated_at">;
 
 export async function getProducts(): Promise<Product[]> {
   const resp = await fetch(`${API_BASE}/supabase/products`);
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${resp.status}`);
-  }
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
   const { data } = await resp.json();
   return data ?? [];
 }
 
 export async function createProduct(product: NewProduct): Promise<Product> {
   const resp = await fetch(`${API_BASE}/supabase/products`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(product),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(product),
   });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${resp.status}`);
-  }
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
   const { data } = await resp.json();
   return Array.isArray(data) ? data[0] : data;
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const resp = await fetch(`${API_BASE}/supabase/products/${id}`, {
-    method: "DELETE",
+  const resp = await fetch(`${API_BASE}/supabase/products/${id}`, { method: "DELETE" });
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+}
+
+// ── Stock Movements ───────────────────────────────────────────────────────
+
+export type MovementType = "in" | "out" | "write_off";
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  products: { id: string; name: string; form: string | null } | null;
+  type: MovementType;
+  quantity: number;
+  purchase_price: number | null;
+  purchase_price_vat: number | null;
+  expiry_date: string | null;
+  operation_date: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewStockMovement = {
+  product_id: string;
+  type: MovementType;
+  quantity: number;
+  purchase_price?: number | null;
+  purchase_price_vat?: number | null;
+  expiry_date?: string | null;
+  operation_date?: string;
+  notes?: string | null;
+};
+
+export async function getStockMovements(type?: MovementType | "all"): Promise<StockMovement[]> {
+  const qs = type && type !== "all" ? `?type=${type}` : "";
+  const resp = await fetch(`${API_BASE}/supabase/stock-movements${qs}`);
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+  const { data } = await resp.json();
+  return data ?? [];
+}
+
+export async function createStockMovement(mv: NewStockMovement): Promise<StockMovement> {
+  const resp = await fetch(`${API_BASE}/supabase/stock-movements`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(mv),
   });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${resp.status}`);
-  }
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+  const { data } = await resp.json();
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function deleteStockMovement(id: string): Promise<void> {
+  const resp = await fetch(`${API_BASE}/supabase/stock-movements/${id}`, { method: "DELETE" });
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
 }
