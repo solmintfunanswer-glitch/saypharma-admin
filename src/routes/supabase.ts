@@ -26,7 +26,8 @@ router.patch("/supabase/settings/:id", async (req, res) => {
   if (!ok) { res.status(500).json({ error: "Missing env vars" }); return; }
   const { id } = req.params;
   const allowed = ["latitude", "longitude", "delivery_radius_km", "max_requests_per_ip_per_day",
-    "delivery_fee", "min_order_amount", "working_hours", "currency"];
+    "delivery_fee", "min_order_amount", "working_hours", "currency",
+    "pharmacy_address", "phone1", "phone2"];
   const patch: Record<string, unknown> = {};
   for (const k of allowed) { if (k in req.body) patch[k] = req.body[k]; }
   if (Object.keys(patch).length === 0) { res.status(400).json({ error: "No valid fields" }); return; }

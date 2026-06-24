@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [form, setForm] = useState({
     latitude: "", longitude: "", delivery_radius_km: "", max_requests_per_ip_per_day: "",
     delivery_fee: "", min_order_amount: "", working_hours: "", currency: "EUR" as Currency,
+    pharmacy_address: "", phone1: "", phone2: "",
   });
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -29,14 +30,17 @@ export default function Dashboard() {
       const s = await getSettings();
       setSettings(s);
       setForm({
-        latitude:                   String(s.latitude),
-        longitude:                  String(s.longitude),
-        delivery_radius_km:         String(s.delivery_radius_km),
+        latitude:                    String(s.latitude),
+        longitude:                   String(s.longitude),
+        delivery_radius_km:          String(s.delivery_radius_km),
         max_requests_per_ip_per_day: String(s.max_requests_per_ip_per_day),
-        delivery_fee:               String(s.delivery_fee ?? 0),
-        min_order_amount:           String(s.min_order_amount ?? 0),
-        working_hours:              s.working_hours ?? "09:00-21:00",
-        currency:                   s.currency ?? "EUR",
+        delivery_fee:                String(s.delivery_fee ?? 0),
+        min_order_amount:            String(s.min_order_amount ?? 0),
+        working_hours:               s.working_hours ?? "09:00-21:00",
+        currency:                    s.currency ?? "EUR",
+        pharmacy_address:            s.pharmacy_address ?? "",
+        phone1:                      s.phone1 ?? "",
+        phone2:                      s.phone2 ?? "",
       });
       setStatus("idle");
     } catch (e) {
@@ -74,6 +78,9 @@ export default function Dashboard() {
         min_order_amount: minAmt,
         working_hours: form.working_hours.trim() || "09:00-21:00",
         currency: form.currency,
+        pharmacy_address: form.pharmacy_address.trim() || null,
+        phone1: form.phone1.trim() || null,
+        phone2: form.phone2.trim() || null,
       });
       setLastSaved(new Date().toLocaleTimeString("ru-RU"));
       await load();
@@ -291,6 +298,58 @@ export default function Dashboard() {
                   onChange={e => setForm({ ...form, working_hours: e.target.value })}
                   className={inputCls} />
                 <p className="text-xs text-slate-600 mt-1">Пример: 09:00-21:00 или Пн-Пт 09:00-20:00</p>
+              </div>
+            </div>
+
+            {/* ── Контакты ── */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 0 1-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-white font-semibold text-sm">Контакты аптеки</h2>
+                  <p className="text-slate-500 text-xs">Адрес и телефоны</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">Адрес аптеки</label>
+                  <input
+                    type="text"
+                    placeholder="ул. Примерная, 1, Киев"
+                    value={form.pharmacy_address}
+                    onChange={e => setForm({ ...form, pharmacy_address: e.target.value })}
+                    className={inputCls}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Телефон 1</label>
+                    <input
+                      type="tel"
+                      placeholder="+380 44 123 45 67"
+                      value={form.phone1}
+                      onChange={e => setForm({ ...form, phone1: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      Телефон 2
+                      <span className="ml-1 text-slate-600 font-normal">(необяз.)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="+380 44 765 43 21"
+                      value={form.phone2}
+                      onChange={e => setForm({ ...form, phone2: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

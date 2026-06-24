@@ -20,6 +20,9 @@ export interface PharmacySettings {
   min_order_amount: number;
   working_hours: string;
   currency: Currency;
+  pharmacy_address: string | null;
+  phone1: string | null;
+  phone2: string | null;
   created_at: string;
   updated_at: string;
 }
