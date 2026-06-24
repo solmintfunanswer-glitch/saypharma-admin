@@ -1,34 +1,48 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-  const ALLOWED = ["latitude", "longitude", "delivery_radius_km", "max_requests_per_ip_per_day"];
+function headers() {
+  const url = process.env.SUPABASE_URL ?? "";
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  return { url, key, ok: !!url && !!key };
+}
 
-  export default async function handler(req: VercelRequest, res: VercelResponse) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (req.method === "OPTIONS") { res.status(200).end(); return; }
-    if (req.method !== "PATCH") { res.status(405).json({ error: "Method not allowed" }); return; }
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const { url, key, ok } = headers();
+  if (!ok) return res.status(500).json({ error: "Missing env vars" });
 
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) { res.status(500).json({ error: "Missing env vars" }); return; }
+  const id = req.query.id as string;
 
-    const { id } = req.query as { id: string };
+  if (req.method === "PATCH") {
+    const allowed = [
+      "latitude", "longitude", "delivery_radius_km",
+      "max_requests_per_ip_per_day", "delivery_fee", "min_order_amount",
+      "working_hours", "currency", "pharmacy_address", "phone1", "phone2",
+    ];
     const patch: Record<string, unknown> = {};
-    for (const k of ALLOWED) {
-      if (req.body && k in req.body) patch[k] = req.body[k];
+    for (const k of allowed) {
+      if (k in (req.body ?? {})) patch[k] = req.body[k];
     }
-    if (!Object.keys(patch).length) { res.status(400).json({ error: "No valid fields" }); return; }
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: "No valid fields" });
+    }
 
     const resp = await fetch(
       `${url}/rest/v1/pharmacy_settings?id=eq.${encodeURIComponent(id)}`,
       {
         method: "PATCH",
-        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
         body: JSON.stringify(patch),
       }
     );
     const data = await resp.json();
-    if (!resp.ok) { res.status(resp.status).json({ error: data }); return; }
-    res.json({ success: true, data });
+    if (!resp.ok) return res.status(resp.status).json({ error: data });
+    return res.json({ success: true, data });
   }
-  
+
+  return res.status(405).json({ error: "Method not allowed" });
+}
