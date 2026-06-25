@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect } from "react";
-  import { getOrders, updateOrderStatus, updateOrderPayment, type Order, type OrderStatus } from "@/lib/api";
+  import {
+    getOrders, updateOrderStatus, updateOrderPayment,
+    getProducts, createStockMovement, CANCEL_RETURN_PREFIX,
+    type Order, type OrderStatus,
+  } from "@/lib/api";
   import { useCurrency } from "@/lib/CurrencyContext";
 
   const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -90,10 +94,7 @@ import { useState, useCallback, useEffect } from "react";
 
     return (
       <div className={`border rounded-2xl overflow-hidden ${isArchive ? "bg-slate-900/50 border-slate-800/50" : "bg-slate-900 border-slate-800"}`}>
-        <button
-          onClick={() => setOpen(o => !o)}
-          className="w-full px-4 pt-4 pb-3 flex items-start gap-3 text-left"
-        >
+        <button onClick={() => setOpen(o => !o)} className="w-full px-4 pt-4 pb-3 flex items-start gap-3 text-left">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {isArchive && (
@@ -108,12 +109,8 @@ import { useState, useCallback, useEffect } from "react";
             </div>
             <p className={`font-medium text-sm truncate ${isArchive ? "text-slate-400" : "text-white"}`}>{clientName}</p>
             <p className="text-slate-500 text-xs mt-0.5">{order.phone}</p>
-            {order.address && (
-              <p className="text-slate-600 text-xs mt-0.5 truncate">📍 {order.address}</p>
-            )}
-            {order.payment_method && (
-              <p className="text-slate-600 text-xs mt-0.5">💳 {paymentLabel(order.payment_method)}</p>
-            )}
+            {order.address && <p className="text-slate-600 text-xs mt-0.5 truncate">📍 {order.address}</p>}
+            {order.payment_method && <p className="text-slate-600 text-xs mt-0.5">💳 {paymentLabel(order.payment_method)}</p>}
           </div>
           <div className="text-right shrink-0">
             {order.total_amount != null && (
@@ -159,16 +156,12 @@ import { useState, useCallback, useEffect } from "react";
                 <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Способ оплаты</p>
                 <div className="flex flex-wrap gap-2">
                   {PAYMENT_METHODS.map(m => (
-                    <button
-                      key={m.value}
-                      onClick={() => changePayment(m.value)}
-                      disabled={savingPayment}
+                    <button key={m.value} onClick={() => changePayment(m.value)} disabled={savingPayment}
                       className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${
                         order.payment_method === m.value
                           ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
                           : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500 active:opacity-70"
-                      }`}
-                    >
+                      }`}>
                       {savingPayment && order.payment_method === m.value ? "…" : m.label}
                     </button>
                   ))}
@@ -181,16 +174,12 @@ import { useState, useCallback, useEffect } from "react";
                 <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Изменить статус</p>
                 <div className="flex flex-wrap gap-2">
                   {next.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => change(s)}
-                      disabled={saving}
+                    <button key={s} onClick={() => change(s)} disabled={saving}
                       className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-opacity disabled:opacity-50 ${
                         s === "cancelled"
                           ? "bg-red-500/10 text-red-400 border-red-500/30 active:opacity-70"
                           : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 active:opacity-70"
-                      }`}
-                    >
+                      }`}>
                       {saving ? "…" : STATUS_LABELS[s]}
                     </button>
                   ))}
@@ -233,6 +222,36 @@ import { useState, useCallback, useEffect } from "react";
 
     const handleStatusChange = async (id: string, status: OrderStatus) => {
       await updateOrderStatus(id, status);
+
+      // Auto-return stock when order is cancelled
+      if (status === "cancelled") {
+        const order = orders.find(o => o.id === id);
+        if (order && Array.isArray(order.items) && order.items.length > 0) {
+          try {
+            const products = await getProducts();
+            const clientName = order.full_name ||
+              [order.first_name, order.last_name].filter(Boolean).join(" ") ||
+              order.phone;
+            for (const item of order.items) {
+              if (!item.name || !item.quantity || item.quantity <= 0) continue;
+              const product = products.find(
+                p => p.name.toLowerCase().trim() === (item.name ?? "").toLowerCase().trim()
+              );
+              if (!product) continue;
+              await createStockMovement({
+                product_id: product.id,
+                type: "in",
+                quantity: item.quantity,
+                notes: `${CANCEL_RETURN_PREFIX}${id.slice(0, 8)} — ${clientName}`,
+                operation_date: new Date().toISOString(),
+              });
+            }
+          } catch {
+            // Cancellation applied — stock return is best-effort
+          }
+        }
+      }
+
       await load(tab);
     };
 
@@ -272,8 +291,7 @@ import { useState, useCallback, useEffect } from "react";
                           ? "bg-slate-700 border-slate-600 text-white"
                           : STATUS_COLORS[t.id as OrderStatus]
                       : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700"
-                  }`}
-                >
+                  }`}>
                   {t.label}
                 </button>
               ))}
@@ -284,7 +302,7 @@ import { useState, useCallback, useEffect } from "react";
         <main className="max-w-2xl mx-auto px-4 py-4 space-y-3">
           {isArchive && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
-              <p className="text-slate-500 text-xs">Отменённые заказы попадают сюда автоматически</p>
+              <p className="text-slate-500 text-xs">Отменённые заказы — товары возвращаются на склад автоматически</p>
             </div>
           )}
 

@@ -98,6 +98,8 @@ export async function deleteProduct(id: string): Promise<void> {
 
 // ── Stock Movements ───────────────────────────────────────────────────────
 
+export const CANCEL_RETURN_PREFIX = "[Возврат по отмене] ";
+
 export type MovementType = "in" | "out" | "write_off";
 
 export interface StockMovement {
