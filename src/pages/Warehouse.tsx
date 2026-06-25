@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
   import {
     getProducts, getStockMovements, createStockMovement, deleteStockMovement,
-    getStockBalance, CANCEL_RETURN_PREFIX,
+    getStockBalance, getOrders, CANCEL_RETURN_PREFIX,
     type Product, type StockMovement, type MovementType, type NewStockMovement,
     type StockBalance,
   } from "@/lib/api";
@@ -35,53 +35,51 @@ import { useState, useEffect, useCallback, useRef } from "react";
       d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
     );
   }
-
   function fmtDate(d: string | null) {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
   }
-
   function fmtPrice(v: number | null, sym: string) {
     if (v == null) return "—";
     return v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + sym;
   }
 
   export default function Warehouse() {
-    const [products, setProducts]     = useState<Product[]>([]);
-    const [movements, setMovements]   = useState<StockMovement[]>([]);
-    const [balance, setBalance]       = useState<StockBalance[]>([]);
-    const [loading, setLoading]       = useState(true);
-    const [loadError, setLoadError]   = useState<string | null>(null);
-    const [tab, setTab]               = useState<ViewTab>("all");
-    const [formOpen, setFormOpen]         = useState(false);
-    const [form, setForm]                 = useState(EMPTY_FORM);
-    const [saving, setSaving]             = useState(false);
-    const [saveError, setSaveError]       = useState<string | null>(null);
-    const [deletingId, setDeletingId]     = useState<string | null>(null);
+    const [products, setProducts]   = useState<Product[]>([]);
+    const [movements, setMovements] = useState<StockMovement[]>([]);
+    const [balance, setBalance]     = useState<StockBalance[]>([]);
+    const [loading, setLoading]     = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [tab, setTab]             = useState<ViewTab>("all");
+    const [formOpen, setFormOpen]   = useState(false);
+    const [form, setForm]           = useState(EMPTY_FORM);
+    const [saving, setSaving]       = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [deletingId, setDeletingId]         = useState<string | null>(null);
     const [productPickerOpen, setProductPickerOpen] = useState(false);
-    const [productSearch, setProductSearch]         = useState("");
+    const [productSearch, setProductSearch]   = useState("");
     const searchRef = useRef<HTMLInputElement>(null);
     const { sym } = useCurrency();
+
+    // Retroactive return state
+    const [isProcessing, setIsProcessing]   = useState(false);
+    const [processResult, setProcessResult] = useState<string | null>(null);
 
     const loadMovements = useCallback(async (t: ViewTab) => {
       setLoading(true); setLoadError(null);
       try {
         if (t === "balance") {
           const [prods, bal] = await Promise.all([getProducts(), getStockBalance()]);
-          setProducts(prods);
-          setBalance(bal);
+          setProducts(prods); setBalance(bal);
         } else if (t === "return") {
-          // Load all "in" movements — filter by prefix in render
           const [prods, movs] = await Promise.all([getProducts(), getStockMovements("in")]);
-          setProducts(prods);
-          setMovements(movs);
+          setProducts(prods); setMovements(movs);
         } else {
           const [prods, movs] = await Promise.all([
             getProducts(),
             getStockMovements(t === "all" ? undefined : t),
           ]);
-          setProducts(prods);
-          setMovements(movs);
+          setProducts(prods); setMovements(movs);
         }
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : "Ошибка загрузки");
@@ -92,11 +90,92 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
     useEffect(() => { loadMovements("all"); }, [loadMovements]);
 
-    const switchTab = (t: ViewTab) => { setTab(t); loadMovements(t); };
+    const switchTab = (t: ViewTab) => {
+      setTab(t);
+      setProcessResult(null);
+      loadMovements(t);
+    };
 
     const set = <K extends keyof typeof EMPTY_FORM>(k: K, v: typeof EMPTY_FORM[K]) =>
       setForm(prev => ({ ...prev, [k]: v }));
 
+    // ── Retroactive bulk return ────────────────────────────────────────────
+    const handleRetroactiveReturn = async () => {
+      setIsProcessing(true);
+      setProcessResult(null);
+      try {
+        const [cancelledOrders, prods, allInMovements] = await Promise.all([
+          getOrders("cancelled"),
+          getProducts(),
+          getStockMovements("in"),
+        ]);
+
+        // Find which order IDs already have return movements
+        const alreadyReturned = new Set<string>();
+        for (const m of allInMovements) {
+          if (m.notes?.startsWith(CANCEL_RETURN_PREFIX)) {
+            const orderShortId = m.notes.slice(CANCEL_RETURN_PREFIX.length, CANCEL_RETURN_PREFIX.length + 8);
+            alreadyReturned.add(orderShortId);
+          }
+        }
+
+        let processed = 0, skipped = 0, errors = 0;
+
+        for (const order of cancelledOrders) {
+          const orderShortId = order.id.slice(0, 8);
+          if (alreadyReturned.has(orderShortId)) { skipped++; continue; }
+
+          const items = Array.isArray(order.items) ? order.items : [];
+          if (items.length === 0) { skipped++; continue; }
+
+          const clientName = order.full_name ||
+            [order.first_name, order.last_name].filter(Boolean).join(" ") ||
+            order.phone;
+
+          let createdForOrder = 0;
+          for (const item of items) {
+            if (!item.quantity || item.quantity <= 0) continue;
+
+            let productId = item.product_id;
+            if (!productId && item.name) {
+              const match = prods.find(
+                p => p.name.toLowerCase().trim() === (item.name ?? "").toLowerCase().trim()
+              );
+              productId = match?.id;
+            }
+            if (!productId) continue;
+
+            try {
+              await createStockMovement({
+                product_id: productId,
+                type: "in",
+                quantity: item.quantity,
+                notes: `${CANCEL_RETURN_PREFIX}${orderShortId} — ${clientName}`,
+                operation_date: order.updated_at,
+              });
+              createdForOrder++;
+            } catch {
+              errors++;
+            }
+          }
+          if (createdForOrder > 0) processed++;
+          else skipped++;
+        }
+
+        const total = cancelledOrders.length;
+        let msg = `Из ${total} отменённых заказов: обработано ${processed}`;
+        if (skipped > 0) msg += `, пропущено ${skipped} (уже были или нет товаров)`;
+        if (errors > 0) msg += `, ошибок ${errors}`;
+        setProcessResult(msg);
+        await loadMovements("return");
+      } catch (e) {
+        setProcessResult(`Ошибка: ${e instanceof Error ? e.message : "неизвестная ошибка"}`);
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    // ── Form submit ────────────────────────────────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       const qty = parseInt(form.quantity, 10);
@@ -141,7 +220,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
     const inp = "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/40 text-sm";
     const lbl = "block text-xs font-medium text-slate-400 mb-1";
 
-    // For "return" tab — filter movements by cancel prefix
     const displayMovements = tab === "return"
       ? movements.filter(m => m.notes?.startsWith(CANCEL_RETURN_PREFIX))
       : movements;
@@ -166,12 +244,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
         <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
 
-          {/* Form toggle — hidden on balance and return tabs */}
+          {/* Form toggle */}
           {tab !== "balance" && tab !== "return" && (
-            <button
-              onClick={() => { setFormOpen(o => !o); setSaveError(null); }}
-              className="w-full flex items-center justify-between bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-2xl px-5 py-4 transition-colors"
-            >
+            <button onClick={() => { setFormOpen(o => !o); setSaveError(null); }}
+              className="w-full flex items-center justify-between bg-slate-900 border border-slate-800 hover:border-emerald-500/40 rounded-2xl px-5 py-4 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
                   <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -202,7 +278,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className={lbl}>Препарат <span className="text-red-400">*</span></label>
                 <div className="relative">
@@ -218,7 +293,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-
                   {productPickerOpen && (
                     <div className="absolute z-30 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
                       <div className="p-2 border-b border-slate-700">
@@ -239,9 +313,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
                             (p.form ?? "").toLowerCase().includes(q) ||
                             (p.active_substance ?? "").toLowerCase().includes(q)
                           );
-                          if (filtered.length === 0) {
-                            return <div className="px-4 py-6 text-center text-slate-500 text-sm">Ничего не найдено</div>;
-                          }
+                          if (filtered.length === 0) return <div className="px-4 py-6 text-center text-slate-500 text-sm">Ничего не найдено</div>;
                           return filtered.map(p => (
                             <button key={p.id} type="button"
                               onClick={() => { set("product_id", p.id); setProductPickerOpen(false); setProductSearch(""); }}
@@ -259,12 +331,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
                   )}
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Количество <span className="text-red-400">*</span></label>
                   <input type="text" inputMode="numeric" pattern="[0-9]*" className={inp}
-                    value={form.quantity} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); set("quantity", v); }} />
+                    value={form.quantity} onChange={e => set("quantity", e.target.value.replace(/[^0-9]/g, ""))} />
                 </div>
                 <div>
                   <label className={lbl}>Дата операции</label>
@@ -272,7 +343,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
                     value={form.operation_date} onChange={e => set("operation_date", e.target.value)} />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={lbl}>Цена без НДС ({sym})</label>
@@ -285,25 +355,21 @@ import { useState, useEffect, useCallback, useRef } from "react";
                     value={form.purchase_price_vat} onChange={e => set("purchase_price_vat", e.target.value)} />
                 </div>
               </div>
-
               <div>
                 <label className={lbl}>Срок годности</label>
                 <input type="date" className={`${inp} [color-scheme:dark]`}
                   value={form.expiry_date} onChange={e => set("expiry_date", e.target.value)} />
               </div>
-
               <div>
                 <label className={lbl}>Примечание</label>
                 <textarea className={`${inp} resize-none`} rows={2} placeholder="Поставщик, накладная №..."
                   value={form.notes} onChange={e => set("notes", e.target.value)} />
               </div>
-
               {saveError && (
                 <div className="bg-red-950/50 border border-red-800/50 rounded-lg px-3 py-2">
                   <p className="text-red-400 text-sm">{saveError}</p>
                 </div>
               )}
-
               <div className="flex gap-3">
                 <button type="button"
                   onClick={() => { setFormOpen(false); setForm({ ...EMPTY_FORM, operation_date: new Date().toISOString().slice(0, 16) }); }}
@@ -324,12 +390,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
           {/* Tabs */}
           <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
             {([
-              { id: "all",       label: "Все"          },
-              { id: "in",        label: "Приход"        },
-              { id: "out",       label: "Расход"        },
-              { id: "write_off", label: "Списание"      },
-              { id: "return",    label: "По отмене"     },
-              { id: "balance",   label: "Остатки"       },
+              { id: "all",       label: "Все"       },
+              { id: "in",        label: "Приход"    },
+              { id: "out",       label: "Расход"    },
+              { id: "write_off", label: "Списание"  },
+              { id: "return",    label: "По отмене" },
+              { id: "balance",   label: "Остатки"   },
             ] as { id: ViewTab; label: string }[]).map(({ id, label }) => (
               <button key={id} onClick={() => switchTab(id)}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors whitespace-nowrap ${
@@ -345,19 +411,45 @@ import { useState, useEffect, useCallback, useRef } from "react";
             ))}
           </div>
 
-          {/* Return tab info banner */}
+          {/* Return tab: banner + retroactive button */}
           {tab === "return" && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/20">
-              <p className="text-amber-400/80 text-xs">Товары, автоматически возвращённые на склад при отмене заказов</p>
+            <div className="space-y-3">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div>
+                  <p className="text-white text-sm font-semibold mb-1">Приход по отмене заказа</p>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    Товары возвращаются на склад автоматически при отмене заказа через эту панель.
+                    Для заказов, отменённых ранее, нажмите кнопку ниже.
+                  </p>
+                </div>
+                <button onClick={handleRetroactiveReturn} disabled={isProcessing}
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border transition-all ${
+                    isProcessing
+                      ? "bg-amber-500/10 border-amber-500/20 text-amber-400/50 cursor-not-allowed"
+                      : "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25 active:opacity-70"
+                  }`}>
+                  {isProcessing && <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />}
+                  {isProcessing ? "Обработка..." : "Восстановить по всем отменённым заказам"}
+                </button>
+                {processResult && (
+                  <div className={`px-3 py-2 rounded-xl text-xs ${
+                    processResult.startsWith("Ошибка")
+                      ? "bg-red-500/10 border border-red-500/20 text-red-400"
+                      : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                  }`}>
+                    {processResult}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Movements list (all tabs except balance) */}
+          {/* Movements list */}
           {tab !== "balance" && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
                 <h2 className="text-white font-semibold text-sm">
-                  {tab === "return" ? "Приход по отмене заказа" : "История движений"}
+                  {tab === "return" ? "Записи о возвратах" : "История движений"}
                 </h2>
                 <button onClick={() => loadMovements(tab)} className="text-slate-500 hover:text-slate-300 transition-colors">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -366,13 +458,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
                   </svg>
                 </button>
               </div>
-
               {loading && <Spinner />}
               {!loading && loadError && <ErrorBlock msg={loadError} onRetry={() => loadMovements(tab)} />}
               {!loading && !loadError && displayMovements.length === 0 && (
-                <div className="px-5 py-12 text-center">
+                <div className="px-5 py-10 text-center">
                   <p className="text-slate-500 text-sm">
-                    {tab === "return" ? "Возвратов по отменённым заказам нет" : "Операций пока нет"}
+                    {tab === "return" ? "Возвратов пока нет — нажмите кнопку выше" : "Операций пока нет"}
                   </p>
                 </div>
               )}
@@ -384,9 +475,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             {tab === "return" ? (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
-                                Возврат
-                              </span>
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">Возврат</span>
                             ) : (
                               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${TYPE_COLORS[m.type]}`}>
                                 {TYPE_LABELS[m.type]}
@@ -404,8 +493,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
                             {m.purchase_price_vat != null && <Row label="С НДС"   value={fmtPrice(m.purchase_price_vat, sym)} />}
                           </div>
                           {m.notes && (
-                            <p className="mt-1.5 text-xs" style={{ color: tab === "return" ? "rgb(180 130 60 / 0.8)" : "rgb(100 116 139)" }}>
-                              {tab === "return" ? m.notes.replace(CANCEL_RETURN_PREFIX, "Заказ: ") : m.notes}
+                            <p className={`mt-1.5 text-xs ${tab === "return" ? "text-amber-600/70" : "text-slate-500"}`}>
+                              {tab === "return"
+                                ? m.notes.replace(CANCEL_RETURN_PREFIX, "Заказ: ")
+                                : m.notes}
                             </p>
                           )}
                           <p className="mt-1.5 text-slate-700 text-[10px]">{fmt(m.operation_date)}</p>
@@ -442,17 +533,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
                   </svg>
                 </button>
               </div>
-
               {loading && <Spinner />}
               {!loading && loadError && <ErrorBlock msg={loadError} onRetry={() => loadMovements("balance")} />}
-
               {!loading && !loadError && balance.length === 0 && (
                 <div className="px-5 py-12 text-center">
                   <p className="text-slate-500 text-sm">Нет данных об остатках</p>
                   <p className="text-slate-700 text-xs mt-1">Добавьте приход товаров</p>
                 </div>
               )}
-
               {!loading && !loadError && balance.length > 0 && (
                 <div className="divide-y divide-slate-800/60">
                   {balance.map(b => (
@@ -500,7 +588,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
       </div>
     );
   }
-
   function ErrorBlock({ msg, onRetry }: { msg: string; onRetry: () => void }) {
     return (
       <div className="px-5 py-8 text-center">
@@ -509,7 +596,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
       </div>
     );
   }
-
   function Row({ label, value }: { label: string; value: string }) {
     return (
       <div className="flex items-center gap-1.5">

@@ -63,21 +63,61 @@ import { useState, useCallback, useEffect } from "react";
     return PAYMENT_METHODS.find(m => m.value === v)?.label ?? v;
   }
 
+  /** Returns [created, skipped] counts for a single order's items */
+  async function returnOrderItems(
+    order: Order,
+    products: Awaited<ReturnType<typeof getProducts>>
+  ): Promise<{ created: number; skipped: number }> {
+    const items = Array.isArray(order.items) ? order.items : [];
+    let created = 0, skipped = 0;
+    const clientName = order.full_name ||
+      [order.first_name, order.last_name].filter(Boolean).join(" ") ||
+      order.phone;
+
+    for (const item of items) {
+      if (!item.quantity || item.quantity <= 0) { skipped++; continue; }
+
+      // Use product_id from item first, otherwise match by name
+      let productId = item.product_id;
+      if (!productId && item.name) {
+        const match = products.find(
+          p => p.name.toLowerCase().trim() === (item.name ?? "").toLowerCase().trim()
+        );
+        productId = match?.id;
+      }
+
+      if (!productId) { skipped++; continue; }
+
+      await createStockMovement({
+        product_id: productId,
+        type: "in",
+        quantity: item.quantity,
+        notes: `${CANCEL_RETURN_PREFIX}${order.id.slice(0, 8)} — ${clientName}`,
+        operation_date: new Date().toISOString(),
+      });
+      created++;
+    }
+    return { created, skipped };
+  }
+
   function OrderCard({ order, sym, isArchive, onStatusChange, onPaymentChange }: {
     order: Order;
     sym: string;
     isArchive: boolean;
-    onStatusChange: (id: string, s: OrderStatus) => Promise<void>;
+    onStatusChange: (id: string, s: OrderStatus) => Promise<string | null>;
     onPaymentChange: (id: string, p: string) => Promise<void>;
   }) {
-    const [open, setOpen]             = useState(false);
-    const [saving, setSaving]         = useState(false);
+    const [open, setOpen]                   = useState(false);
+    const [saving, setSaving]               = useState(false);
     const [savingPayment, setSavingPayment] = useState(false);
+    const [returnInfo, setReturnInfo]       = useState<string | null>(null);
     const next = NEXT_STATUSES[order.status];
 
     const change = async (s: OrderStatus) => {
       setSaving(true);
-      await onStatusChange(order.id, s);
+      setReturnInfo(null);
+      const info = await onStatusChange(order.id, s);
+      if (info) setReturnInfo(info);
       setSaving(false);
       setOpen(false);
     };
@@ -89,8 +129,7 @@ import { useState, useCallback, useEffect } from "react";
     };
 
     const clientName = order.full_name || [order.first_name, order.last_name].filter(Boolean).join(" ") || "—";
-    const items: { name?: string; quantity?: number; price?: number }[] =
-      Array.isArray(order.items) ? order.items : [];
+    const items = Array.isArray(order.items) ? order.items : [];
 
     return (
       <div className={`border rounded-2xl overflow-hidden ${isArchive ? "bg-slate-900/50 border-slate-800/50" : "bg-slate-900 border-slate-800"}`}>
@@ -98,9 +137,7 @@ import { useState, useCallback, useEffect } from "react";
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {isArchive && (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-700/40 text-slate-500 border-slate-700/50">
-                  Архив
-                </span>
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-700/40 text-slate-500 border-slate-700/50">Архив</span>
               )}
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLORS[order.status]}`}>
                 {STATUS_LABELS[order.status]}
@@ -124,6 +161,12 @@ import { useState, useCallback, useEffect } from "react";
             </svg>
           </div>
         </button>
+
+        {returnInfo && (
+          <div className="mx-4 mb-3 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <p className="text-emerald-400 text-xs">{returnInfo}</p>
+          </div>
+        )}
 
         {open && (
           <div className="border-t border-slate-800 px-4 py-3 space-y-3">
@@ -194,10 +237,10 @@ import { useState, useCallback, useEffect } from "react";
 
   export default function Orders() {
     const { sym } = useCurrency();
-    const [tab, setTab]       = useState<FilterTab>("all");
-    const [orders, setOrders] = useState<Order[]>([]);
+    const [tab, setTab]         = useState<FilterTab>("all");
+    const [orders, setOrders]   = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError]   = useState<string | null>(null);
+    const [error, setError]     = useState<string | null>(null);
 
     const load = useCallback(async (filter: FilterTab) => {
       setLoading(true);
@@ -220,39 +263,33 @@ import { useState, useCallback, useEffect } from "react";
 
     const switchTab = (t: FilterTab) => { setTab(t); load(t); };
 
-    const handleStatusChange = async (id: string, status: OrderStatus) => {
+    const handleStatusChange = async (id: string, status: OrderStatus): Promise<string | null> => {
       await updateOrderStatus(id, status);
 
-      // Auto-return stock when order is cancelled
       if (status === "cancelled") {
         const order = orders.find(o => o.id === id);
         if (order && Array.isArray(order.items) && order.items.length > 0) {
           try {
             const products = await getProducts();
-            const clientName = order.full_name ||
-              [order.first_name, order.last_name].filter(Boolean).join(" ") ||
-              order.phone;
-            for (const item of order.items) {
-              if (!item.name || !item.quantity || item.quantity <= 0) continue;
-              const product = products.find(
-                p => p.name.toLowerCase().trim() === (item.name ?? "").toLowerCase().trim()
-              );
-              if (!product) continue;
-              await createStockMovement({
-                product_id: product.id,
-                type: "in",
-                quantity: item.quantity,
-                notes: `${CANCEL_RETURN_PREFIX}${id.slice(0, 8)} — ${clientName}`,
-                operation_date: new Date().toISOString(),
-              });
+            const { created, skipped } = await returnOrderItems(order, products);
+            await load(tab);
+            if (created > 0) {
+              return `Возвращено на склад: ${created} позиций${skipped > 0 ? `, ${skipped} не найдено` : ""}`;
             }
-          } catch {
-            // Cancellation applied — stock return is best-effort
+            if (skipped > 0) {
+              return `Товары не найдены в справочнике (${skipped} позиций) — добавьте возврат вручную`;
+            }
+          } catch (e) {
+            await load(tab);
+            return `Ошибка возврата: ${(e as Error).message}`;
           }
+        } else {
+          await load(tab);
         }
+      } else {
+        await load(tab);
       }
-
-      await load(tab);
+      return null;
     };
 
     const handlePaymentChange = async (id: string, payment_method: string) => {
@@ -301,30 +338,26 @@ import { useState, useCallback, useEffect } from "react";
 
         <main className="max-w-2xl mx-auto px-4 py-4 space-y-3">
           {isArchive && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
+            <div className="px-3 py-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
               <p className="text-slate-500 text-xs">Отменённые заказы — товары возвращаются на склад автоматически</p>
             </div>
           )}
-
           {loading && (
             <div className="flex items-center justify-center py-16">
               <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-
           {!loading && error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-center">
               <p className="text-red-400 text-sm">{error}</p>
               <button onClick={() => load(tab)} className="mt-2 text-xs text-slate-400 underline">Повторить</button>
             </div>
           )}
-
           {!loading && !error && orders.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <p className="text-slate-500 text-sm">{isArchive ? "Архив пуст" : "Заказов нет"}</p>
             </div>
           )}
-
           {!loading && !error && orders.map(o => (
             <OrderCard key={o.id} order={o} sym={sym} isArchive={isArchive}
               onStatusChange={handleStatusChange} onPaymentChange={handlePaymentChange} />

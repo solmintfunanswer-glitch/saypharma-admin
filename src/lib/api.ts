@@ -174,6 +174,7 @@ export async function getStockBalance(): Promise<StockBalance[]> {
 export type OrderStatus = "new" | "accepted" | "prepared" | "in_delivery" | "delivered" | "cancelled";
 
 export interface OrderItem {
+  product_id?: string;
   name?: string;
   quantity?: number;
   price?: number;
