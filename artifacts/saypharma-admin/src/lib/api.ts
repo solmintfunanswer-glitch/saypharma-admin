@@ -268,6 +268,12 @@ export async function resetAllData(): Promise<void> {
     summary: string | null;
     order_id: string | null;
   call_id: string | null;
+  order?: {
+      id: string;
+      status: string;
+      total_amount: number | null;
+      call_id: string | null;
+    } | null;
     created_at: string;
   }
 

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
   import { getCallTranscripts, type CallTranscript } from "@/lib/api";
+  import { useCurrency } from "@/lib/CurrencyContext";
 
-  type Status = "loading" | "idle" | "error";
+  type LoadStatus = "loading" | "idle" | "error";
 
   function fmtDuration(sec: number | null): string {
     if (!sec) return "—";
@@ -17,15 +18,59 @@ import { useState, useEffect, useCallback } from "react";
     });
   }
 
-  const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  const CALL_STATUS: Record<string, { label: string; cls: string }> = {
     completed: { label: "Завершён",  cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" },
     missed:    { label: "Пропущен", cls: "bg-amber-500/15   text-amber-400   border-amber-500/20"   },
     failed:    { label: "Ошибка",   cls: "bg-red-500/15     text-red-400     border-red-500/20"     },
   };
 
-  function CallCard({ call }: { call: CallTranscript }) {
+  const ORDER_STATUS_RU: Record<string, string> = {
+    new:         "Новый",
+    accepted:    "Принят",
+    prepared:    "Собран",
+    in_delivery: "Доставляется",
+    delivered:   "Доставлен",
+    cancelled:   "Отменён",
+  };
+
+  function OrderBadge({ order, sym }: {
+    order: NonNullable<CallTranscript["order"]>;
+    sym: string;
+  }) {
+    const isCancelled = order.status === "cancelled";
+    return (
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${
+        isCancelled
+          ? "bg-slate-800/60 border-slate-700"
+          : "bg-emerald-500/10 border-emerald-500/25"
+      }`}>
+        {isCancelled ? (
+          <svg className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+        )}
+        <div className="min-w-0">
+          <p className={`text-xs font-semibold ${isCancelled ? "text-slate-400" : "text-emerald-400"}`}>
+            Заказ создан
+          </p>
+          <p className="text-[10px] text-slate-500 leading-none mt-0.5">
+            {ORDER_STATUS_RU[order.status] ?? order.status}
+            {order.total_amount != null && (
+              <> · {order.total_amount.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} {sym}</>
+            )}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  function CallCard({ call, sym }: { call: CallTranscript; sym: string }) {
     const [open, setOpen] = useState(false);
-    const cfg = STATUS_CFG[call.status] ?? STATUS_CFG.completed;
+    const cfg = CALL_STATUS[call.status] ?? CALL_STATUS.completed;
 
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
@@ -48,6 +93,11 @@ import { useState, useEffect, useCallback } from "react";
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${cfg.cls}`}>
                 {cfg.label}
               </span>
+              {call.order && call.order.status !== "cancelled" && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-400 border-emerald-500/20">
+                  Заказ ✓
+                </span>
+              )}
             </div>
             {call.client_name && (
               <p className="text-slate-400 text-xs mt-0.5">{call.client_name}</p>
@@ -55,7 +105,7 @@ import { useState, useEffect, useCallback } from "react";
             {call.summary && (
               <p className="text-slate-500 text-xs mt-1 line-clamp-1">{call.summary}</p>
             )}
-            <div className="flex items-center gap-3 mt-1.5">
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <span className="text-slate-600 text-xs">{fmtDate(call.called_at)}</span>
               {call.duration_sec != null && (
                 <span className="text-slate-600 text-xs flex items-center gap-1">
@@ -80,6 +130,11 @@ import { useState, useEffect, useCallback } from "react";
 
         {open && (
           <div className="border-t border-slate-800 px-4 py-4 space-y-3">
+            {/* Order info block */}
+            {call.order && (
+              <OrderBadge order={call.order} sym={sym} />
+            )}
+
             {/* Meta */}
             <div className="grid grid-cols-2 gap-2">
               {call.agent_name && (
@@ -88,10 +143,10 @@ import { useState, useEffect, useCallback } from "react";
                   <p className="text-slate-300 text-xs">{call.agent_name}</p>
                 </div>
               )}
-              {call.order_id && (
-                <div className="bg-slate-800/60 rounded-lg px-3 py-2">
-                  <p className="text-slate-500 text-[10px] font-medium mb-0.5">Заказ</p>
-                  <p className="text-slate-300 text-xs font-mono">{call.order_id.slice(0, 8)}…</p>
+              {call.call_id && (
+                <div className="bg-slate-800/60 rounded-lg px-3 py-2 col-span-1">
+                  <p className="text-slate-500 text-[10px] font-medium mb-0.5">Call ID</p>
+                  <p className="text-slate-400 text-[10px] font-mono truncate">{call.call_id}</p>
                 </div>
               )}
             </div>
@@ -116,24 +171,24 @@ import { useState, useEffect, useCallback } from "react";
   }
 
   export default function CallHistory() {
-    const [records, setRecords]   = useState<CallTranscript[]>([]);
-    const [status, setStatus]     = useState<Status>("loading");
-    const [error, setError]       = useState<string | null>(null);
-
-    const [phone,     setPhone]     = useState("");
+    const { sym } = useCurrency();
+    const [records, setRecords]     = useState<CallTranscript[]>([]);
+    const [status, setStatus]       = useState<LoadStatus>("loading");
+    const [error, setError]         = useState<string | null>(null);
+    const [phone, setPhone]         = useState("");
     const [clientName, setClientName] = useState("");
-    const [dateFrom,  setDateFrom]  = useState("");
-    const [dateTo,    setDateTo]    = useState("");
+    const [dateFrom, setDateFrom]   = useState("");
+    const [dateTo, setDateTo]       = useState("");
 
     const load = useCallback(async () => {
       setStatus("loading");
       setError(null);
       try {
         const data = await getCallTranscripts({
-          phone:       phone.trim()       || undefined,
-          client_name: clientName.trim()  || undefined,
-          date_from:   dateFrom           || undefined,
-          date_to:     dateTo             || undefined,
+          phone:       phone.trim()      || undefined,
+          client_name: clientName.trim() || undefined,
+          date_from:   dateFrom          || undefined,
+          date_to:     dateTo            || undefined,
         });
         setRecords(data);
         setStatus("idle");
@@ -143,16 +198,13 @@ import { useState, useEffect, useCallback } from "react";
       }
     }, [phone, clientName, dateFrom, dateTo]);
 
-    // Auto-load on mount
     useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const handleReset = () => {
-      setPhone(""); setClientName(""); setDateFrom(""); setDateTo("");
-    };
+    const handleReset = () => { setPhone(""); setClientName(""); setDateFrom(""); setDateTo(""); };
+    const hasFilters  = phone || clientName || dateFrom || dateTo;
+    const inputCls    = "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 text-sm";
 
-    const inputCls = "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 text-sm";
-
-    const hasFilters = phone || clientName || dateFrom || dateTo;
+    const withOrder = records.filter(r => r.order && r.order.status !== "cancelled").length;
 
     return (
       <div className="bg-slate-950 min-h-screen">
@@ -167,7 +219,14 @@ import { useState, useEffect, useCallback } from "react";
             </div>
             <span className="text-white font-semibold text-sm">История разговоров</span>
             {status === "idle" && (
-              <span className="ml-auto text-xs text-slate-500">{records.length} зап.</span>
+              <div className="ml-auto flex items-center gap-2">
+                {withOrder > 0 && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                    {withOrder} с заказом
+                  </span>
+                )}
+                <span className="text-xs text-slate-500">{records.length} зап.</span>
+              </div>
             )}
           </div>
         </header>
@@ -213,21 +272,19 @@ import { useState, useEffect, useCallback } from "react";
                 {status === "loading" ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Поиск...
+                    Загрузка...
                   </span>
                 ) : "Найти"}
               </button>
             </div>
           </div>
 
-          {/* Error */}
           {status === "error" && (
             <div className="bg-red-950/50 border border-red-800/50 rounded-xl p-4">
               <p className="text-red-400 text-sm">{error}</p>
             </div>
           )}
 
-          {/* Empty */}
           {status === "idle" && records.length === 0 && (
             <div className="text-center py-16">
               <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center mx-auto mb-3">
@@ -241,10 +298,9 @@ import { useState, useEffect, useCallback } from "react";
             </div>
           )}
 
-          {/* List */}
           {status === "idle" && records.length > 0 && (
             <div className="space-y-3">
-              {records.map(r => <CallCard key={r.id} call={r} />)}
+              {records.map(r => <CallCard key={r.id} call={r} sym={sym} />)}
             </div>
           )}
         </main>
