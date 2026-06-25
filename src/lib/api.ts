@@ -100,7 +100,7 @@ export async function deleteProduct(id: string): Promise<void> {
 
 export const CANCEL_RETURN_PREFIX = "[Возврат по отмене] ";
 
-export type MovementType = "in" | "out" | "write_off";
+export type MovementType = "in" | "out" | "write_off" | "return";
 
 export interface StockMovement {
   id: string;
@@ -174,10 +174,10 @@ export async function getStockBalance(): Promise<StockBalance[]> {
 export type OrderStatus = "new" | "accepted" | "prepared" | "in_delivery" | "delivered" | "cancelled";
 
 export interface OrderItem {
-  product_id?: string;
   name?: string;
   quantity?: number;
   price?: number;
+  product_id?: string;
 }
 
 export interface Order {
@@ -202,6 +202,11 @@ export async function getOrders(status?: OrderStatus): Promise<Order[]> {
   if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
   const { data } = await resp.json();
   return data ?? [];
+}
+
+export async function deleteOrder(id: string): Promise<void> {
+  const resp = await fetch(`${API_BASE}/supabase/orders/${id}`, { method: "DELETE" });
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
 }
 
 export async function updateOrderStatus(id: string, status: OrderStatus): Promise<void> {

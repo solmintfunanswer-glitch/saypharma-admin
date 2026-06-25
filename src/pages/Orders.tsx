@@ -242,7 +242,9 @@ import { useState, useCallback, useEffect } from "react";
             const prods = await getProducts();
             const { created, skipped } = await returnOrderItems(order, prods);
             await load(tab);
-            if (created > 0) return `Возвращено на склад: ${created} позиций${skipped > 0 ? `, ${skipped} не найдено в справочнике` : ""}`;
+            if (created > 0) {
+              return `Возвращено на склад: ${created} позиций${skipped > 0 ? `, ${skipped} не найдено в справочнике` : ""}`;
+            }
             return `Товары не найдены в справочнике (${skipped} поз.) — добавьте возврат вручную`;
           } catch (e) {
             await load(tab);
