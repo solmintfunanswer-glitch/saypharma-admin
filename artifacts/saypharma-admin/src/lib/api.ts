@@ -249,3 +249,8 @@ export async function getStockReport(): Promise<StockReportRow[]> {
   const { data } = await resp.json();
   return data ?? [];
 }
+
+export async function resetAllData(): Promise<void> {
+  const resp = await fetch(`${API_BASE}/supabase/reset`, { method: "DELETE" });
+  if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+}
