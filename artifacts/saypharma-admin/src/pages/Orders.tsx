@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import {
-  getOrders, updateOrderStatus, updateOrderPayment, deleteOrder,
+  getOrders, updateOrderStatus, updateOrderPayment,
   createStockMovement,
   type Order, type OrderStatus,
 } from "@/lib/api";
@@ -33,7 +33,7 @@ const NEXT_STATUSES: Record<OrderStatus, OrderStatus[]> = {
   cancelled:   [],
 };
 
-type FilterTab = "all" | OrderStatus;
+type FilterTab = "all" | OrderStatus | "archive";
 
 const TABS: { id: FilterTab; label: string }[] = [
   { id: "all",         label: "Все" },
@@ -42,7 +42,7 @@ const TABS: { id: FilterTab; label: string }[] = [
   { id: "prepared",    label: "Готовятся" },
   { id: "in_delivery", label: "Доставка" },
   { id: "delivered",   label: "Доставлен" },
-  { id: "cancelled",   label: "Отменён" },
+  { id: "archive",     label: "Архив" },
 ];
 
 function formatDate(iso: string) {
@@ -63,17 +63,16 @@ function paymentLabel(v: string | null) {
   return PAYMENT_METHODS.find(m => m.value === v)?.label ?? v;
 }
 
-function OrderCard({ order, sym, onStatusChange, onPaymentChange, onDelete }: {
+function OrderCard({ order, sym, isArchive, onStatusChange, onPaymentChange }: {
   order: Order;
   sym: string;
+  isArchive: boolean;
   onStatusChange: (id: string, s: OrderStatus) => Promise<void>;
   onPaymentChange: (id: string, p: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
 }) {
   const [open, setOpen]             = useState(false);
   const [saving, setSaving]         = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
-  const [deleting, setDeleting]     = useState(false);
   const next = NEXT_STATUSES[order.status];
 
   const change = async (s: OrderStatus) => {
@@ -89,18 +88,11 @@ function OrderCard({ order, sym, onStatusChange, onPaymentChange, onDelete }: {
     setSavingPayment(false);
   };
 
-  const handleDelete = async () => {
-    if (!confirm("Удалить заказ? Это действие нельзя отменить.")) return;
-    setDeleting(true);
-    await onDelete(order.id);
-    setDeleting(false);
-  };
-
   const clientName = order.full_name || [order.first_name, order.last_name].filter(Boolean).join(" ") || "—";
   const items = Array.isArray(order.items) ? order.items : [];
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+    <div className={`border rounded-2xl overflow-hidden ${isArchive ? "bg-slate-900/60 border-slate-800/60 opacity-80" : "bg-slate-900 border-slate-800"}`}>
       {/* Header row */}
       <div className="px-4 pt-4 pb-3 flex items-start gap-3">
         <button
@@ -108,52 +100,40 @@ function OrderCard({ order, sym, onStatusChange, onPaymentChange, onDelete }: {
           className="flex-1 min-w-0 text-left"
         >
           <div className="flex items-center gap-2 flex-wrap mb-1">
+            {isArchive && (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-700/40 text-slate-500 border-slate-700/60 flex items-center gap-1">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                </svg>
+                Архив
+              </span>
+            )}
             <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLORS[order.status]}`}>
               {STATUS_LABELS[order.status]}
             </span>
             <span className="text-slate-500 text-xs">{formatDate(order.created_at)}</span>
           </div>
-          <p className="text-white font-medium text-sm truncate">{clientName}</p>
-          <p className="text-slate-400 text-xs mt-0.5">{order.phone}</p>
+          <p className={`font-medium text-sm truncate ${isArchive ? "text-slate-400" : "text-white"}`}>{clientName}</p>
+          <p className="text-slate-500 text-xs mt-0.5">{order.phone}</p>
           {order.address && (
-            <p className="text-slate-500 text-xs mt-0.5 truncate">📍 {order.address}</p>
-          )}
-          {order.payment_method && (
-            <p className="text-slate-500 text-xs mt-0.5">💳 {paymentLabel(order.payment_method)}</p>
+            <p className="text-slate-600 text-xs mt-0.5 truncate">📍 {order.address}</p>
           )}
         </button>
 
         <div className="flex flex-col items-end gap-1 shrink-0">
           {order.total_amount != null && (
-            <p className="text-emerald-400 font-semibold text-sm">
+            <p className={`font-semibold text-sm ${isArchive ? "text-slate-500" : "text-emerald-400"}`}>
               {Number(order.total_amount).toLocaleString("ru-RU")} {sym}
             </p>
           )}
-          <div className="flex items-center gap-1 mt-1">
-            {/* Удалить */}
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              title="Удалить заказ"
-              className="w-8 h-8 flex items-center justify-center rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 active:opacity-70 transition-colors disabled:opacity-40"
-            >
-              {deleting
-                ? <div className="w-3 h-3 border border-slate-500 border-t-transparent rounded-full animate-spin" />
-                : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                      d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                  </svg>
-              }
-            </button>
-            {/* Развернуть */}
-            <button onClick={() => setOpen(o => !o)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-600 hover:text-slate-400 transition-colors">
-              <svg className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
+          <button onClick={() => setOpen(o => !o)}
+            className="mt-1 w-7 h-7 flex items-center justify-center rounded-lg text-slate-600 hover:text-slate-400 transition-colors">
+            <svg className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -187,28 +167,37 @@ function OrderCard({ order, sym, onStatusChange, onPaymentChange, onDelete }: {
           )}
 
           {/* Payment method */}
-          <div>
-            <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Способ оплаты</p>
-            <div className="flex flex-wrap gap-2">
-              {PAYMENT_METHODS.map(m => (
-                <button
-                  key={m.value}
-                  onClick={() => changePayment(m.value)}
-                  disabled={savingPayment}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${
-                    order.payment_method === m.value
-                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
-                      : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500 active:opacity-70"
-                  }`}
-                >
-                  {savingPayment && order.payment_method === m.value ? "…" : m.label}
-                </button>
-              ))}
+          {order.payment_method && (
+            <div>
+              <p className="text-slate-500 text-xs mb-1 uppercase tracking-wider">Способ оплаты</p>
+              <p className="text-slate-400 text-sm">{paymentLabel(order.payment_method)}</p>
             </div>
-          </div>
+          )}
 
-          {/* Status actions */}
-          {next.length > 0 && (
+          {/* Status actions — hidden in archive */}
+          {!isArchive && next.length > 0 && (
+            <div>
+              <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Изменить статус</p>
+              <div className="flex flex-wrap gap-2">
+                {PAYMENT_METHODS.map(m => (
+                  <button
+                    key={m.value}
+                    onClick={() => changePayment(m.value)}
+                    disabled={savingPayment}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${
+                      order.payment_method === m.value
+                        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+                        : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500 active:opacity-70"
+                    }`}
+                  >
+                    {savingPayment && order.payment_method === m.value ? "…" : m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!isArchive && next.length > 0 && (
             <div>
               <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Изменить статус</p>
               <div className="flex flex-wrap gap-2">
@@ -246,7 +235,12 @@ export default function Orders() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getOrders(filter === "all" ? undefined : filter);
+      // Archive tab fetches cancelled orders
+      const statusFilter: OrderStatus | undefined =
+        filter === "archive"   ? "cancelled" :
+        filter === "all"       ? undefined :
+        filter as OrderStatus;
+      const data = await getOrders(statusFilter);
       setOrders(data);
     } catch (e) {
       setError((e as Error).message);
@@ -292,10 +286,7 @@ export default function Orders() {
     await load(tab);
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteOrder(id);
-    setOrders(prev => prev.filter(o => o.id !== id));
-  };
+  const isArchive = tab === "archive";
 
   return (
     <div className="bg-slate-950 min-h-screen">
@@ -306,7 +297,9 @@ export default function Orders() {
             <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
               <span className="text-emerald-400 text-xs font-bold">S</span>
             </div>
-            <span className="text-white font-semibold text-sm">Заказы</span>
+            <span className="text-white font-semibold text-sm">
+              {isArchive ? "Архив заказов" : "Заказы"}
+            </span>
           </div>
           <button
             onClick={() => load(tab)}
@@ -327,15 +320,32 @@ export default function Orders() {
             <button key={id} onClick={() => switchTab(id)}
               className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors whitespace-nowrap ${
                 tab === id
-                  ? id === "all"       ? "bg-slate-700 border-slate-600 text-white"
-                  : id === "cancelled" ? "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                  ? id === "all"     ? "bg-slate-700 border-slate-600 text-white"
+                  : id === "archive" ? "bg-slate-700/60 border-slate-600/60 text-slate-300"
                   : STATUS_COLORS[id as OrderStatus]
                   : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700"
               }`}>
+              {id === "archive" && (
+                <svg className="inline w-3 h-3 mr-1 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                </svg>
+              )}
               {label}
             </button>
           ))}
         </div>
+
+        {/* Archive banner */}
+        {isArchive && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
+            <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+            </svg>
+            <p className="text-slate-500 text-xs">Отменённые заказы попадают сюда автоматически</p>
+          </div>
+        )}
 
         {loading && (
           <div className="flex items-center justify-center py-16">
@@ -352,11 +362,23 @@ export default function Orders() {
 
         {!loading && !error && orders.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <svg className="w-10 h-10 text-slate-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
-            </svg>
-            <p className="text-slate-500 text-sm">Заказов нет</p>
+            {isArchive ? (
+              <>
+                <svg className="w-10 h-10 text-slate-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                </svg>
+                <p className="text-slate-500 text-sm">Архив пуст</p>
+              </>
+            ) : (
+              <>
+                <svg className="w-10 h-10 text-slate-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+                </svg>
+                <p className="text-slate-500 text-sm">Заказов нет</p>
+              </>
+            )}
           </div>
         )}
 
@@ -365,9 +387,9 @@ export default function Orders() {
             key={o.id}
             order={o}
             sym={sym}
+            isArchive={isArchive}
             onStatusChange={handleStatusChange}
             onPaymentChange={handlePaymentChange}
-            onDelete={handleDelete}
           />
         ))}
       </main>
