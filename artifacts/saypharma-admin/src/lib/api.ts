@@ -254,3 +254,38 @@ export async function resetAllData(): Promise<void> {
   const resp = await fetch(`${API_BASE}/supabase/reset`, { method: "DELETE" });
   if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
 }
+
+  export interface CallTranscript {
+    id: string;
+    phone: string;
+    client_name: string | null;
+    agent_name: string | null;
+    called_at: string;
+    duration_sec: number | null;
+    status: "completed" | "missed" | "failed";
+    transcript: string | null;
+    summary: string | null;
+    order_id: string | null;
+    created_at: string;
+  }
+
+  export interface CallTranscriptsFilters {
+    phone?: string;
+    client_name?: string;
+    date_from?: string;
+    date_to?: string;
+  }
+
+  export async function getCallTranscripts(filters: CallTranscriptsFilters = {}): Promise<CallTranscript[]> {
+    const params = new URLSearchParams();
+    if (filters.phone)       params.set("phone",       filters.phone);
+    if (filters.client_name) params.set("client_name", filters.client_name);
+    if (filters.date_from)   params.set("date_from",   filters.date_from);
+    if (filters.date_to)     params.set("date_to",     filters.date_to);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const resp = await fetch(`${API_BASE}/supabase/call-transcripts${qs}`);
+    if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
+    const { data } = await resp.json();
+    return data ?? [];
+  }
+  

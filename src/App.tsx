@@ -5,6 +5,7 @@ import Products from "@/pages/Products";
 import Warehouse from "@/pages/Warehouse";
 import Orders from "@/pages/Orders";
 import Reports from "@/pages/Reports";
+import CallHistory from "@/pages/CallHistory";
 import BottomNav, { type Tab } from "@/components/BottomNav";
 import "./index.css";
 
@@ -26,6 +27,7 @@ export default function App() {
           {tab === "warehouse" && <Warehouse />}
           {tab === "orders"    && <Orders />}
           {tab === "reports"   && <Reports />}
+          {tab === "calls"    && <CallHistory />}
         </div>
         <BottomNav active={tab} onChange={setTab} />
       </div>
