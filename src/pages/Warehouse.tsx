@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   getProducts, getStockMovements, createStockMovement, deleteStockMovement,
   getStockBalance,
@@ -18,7 +18,7 @@ const TYPE_COLORS: Record<MovementType, string> = {
 const EMPTY_FORM = {
   product_id: "",
   type: "in" as MovementType,
-  quantity: 1,
+  quantity: "1",
   purchase_price: "" as string,
   purchase_price_vat: "" as string,
   expiry_date: "" as string,
@@ -52,11 +52,14 @@ export default function Warehouse() {
   const [loading, setLoading]       = useState(true);
   const [loadError, setLoadError]   = useState<string | null>(null);
   const [tab, setTab]               = useState<ViewTab>("all");
-  const [formOpen, setFormOpen]     = useState(false);
-  const [form, setForm]             = useState(EMPTY_FORM);
-  const [saving, setSaving]         = useState(false);
-  const [saveError, setSaveError]   = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [formOpen, setFormOpen]         = useState(false);
+  const [form, setForm]                 = useState(EMPTY_FORM);
+  const [saving, setSaving]             = useState(false);
+  const [saveError, setSaveError]       = useState<string | null>(null);
+  const [deletingId, setDeletingId]     = useState<string | null>(null);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productSearch, setProductSearch]         = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const loadMovements = useCallback(async (t: ViewTab) => {
     setLoading(true); setLoadError(null);
@@ -89,14 +92,15 @@ export default function Warehouse() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const qty = parseInt(form.quantity, 10);
     if (!form.product_id) { setSaveError("Выберите товар"); return; }
-    if (form.quantity <= 0) { setSaveError("Количество должно быть больше 0"); return; }
+    if (isNaN(qty) || qty <= 0) { setSaveError("Количество должно быть больше 0"); return; }
     setSaving(true); setSaveError(null);
     try {
       const payload: NewStockMovement = {
         product_id:         form.product_id,
         type:               form.type,
-        quantity:           form.quantity,
+        quantity:           qty,
         purchase_price:     form.purchase_price     ? Number(form.purchase_price)     : null,
         purchase_price_vat: form.purchase_price_vat ? Number(form.purchase_price_vat) : null,
         expiry_date:        form.expiry_date        || null,
@@ -190,21 +194,106 @@ export default function Warehouse() {
             {/* Товар */}
             <div>
               <label className={lbl}>Препарат <span className="text-red-400">*</span></label>
-              <select className={`${inp} appearance-none`} value={form.product_id}
-                onChange={e => set("product_id", e.target.value)}>
-                <option value="">— выберите товар —</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}{p.form ? ` (${p.form})` : ""}</option>
-                ))}
-              </select>
+              <div className="relative">
+                {/* Кнопка-триггер */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductPickerOpen(o => !o);
+                    setProductSearch("");
+                    setTimeout(() => searchRef.current?.focus(), 50);
+                  }}
+                  className={`${inp} text-left flex items-center justify-between`}
+                >
+                  <span className={form.product_id ? "text-white" : "text-slate-600"}>
+                    {form.product_id
+                      ? (() => { const p = products.find(x => x.id === form.product_id); return p ? `${p.name}${p.form ? ` (${p.form})` : ""}` : "—"; })()
+                      : "— выберите товар —"}
+                  </span>
+                  <svg className="w-3 h-3 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Дропдаун с поиском */}
+                {productPickerOpen && (
+                  <div className="absolute z-30 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+                    {/* Строка поиска */}
+                    <div className="p-2 border-b border-slate-700">
+                      <div className="relative">
+                        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <input
+                          ref={searchRef}
+                          type="text"
+                          placeholder="Поиск по названию..."
+                          value={productSearch}
+                          onChange={e => setProductSearch(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/40 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Список товаров */}
+                    <div className="max-h-52 overflow-y-auto">
+                      {(() => {
+                        const q = productSearch.toLowerCase();
+                        const filtered = products.filter(p =>
+                          p.name.toLowerCase().includes(q) ||
+                          (p.form ?? "").toLowerCase().includes(q) ||
+                          (p.active_substance ?? "").toLowerCase().includes(q)
+                        );
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="px-4 py-6 text-center text-slate-500 text-sm">
+                              Ничего не найдено
+                            </div>
+                          );
+                        }
+                        return filtered.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              set("product_id", p.id);
+                              setProductPickerOpen(false);
+                              setProductSearch("");
+                            }}
+                            className={`w-full text-left px-4 py-3 text-sm transition-colors border-b border-slate-700/50 last:border-0 ${
+                              form.product_id === p.id
+                                ? "bg-emerald-500/15 text-emerald-300"
+                                : "text-slate-300 hover:bg-slate-700/60"
+                            }`}
+                          >
+                            <span className="font-medium">{p.name}</span>
+                            {p.form && <span className="text-slate-500 ml-1">({p.form})</span>}
+                            {p.active_substance && (
+                              <span className="block text-[11px] text-slate-600 mt-0.5">{p.active_substance}</span>
+                            )}
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={lbl}>Количество <span className="text-red-400">*</span></label>
-                <input type="number" min={1} className={inp} value={form.quantity}
-                  onChange={e => set("quantity", Number(e.target.value))} />
-              </div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className={inp}
+                  value={form.quantity}
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, "");
+                    set("quantity", v);
+                  }}
+                /></div>
               <div>
                 <label className={lbl}>Дата операции</label>
                 <input type="datetime-local" className={`${inp} [color-scheme:dark]`}
