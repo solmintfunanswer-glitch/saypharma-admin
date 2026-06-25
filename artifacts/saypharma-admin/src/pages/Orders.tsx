@@ -135,7 +135,7 @@ function OrderCard({ order, sym, onStatusChange, onPaymentChange, onDelete }: {
               onClick={handleDelete}
               disabled={deleting}
               title="Удалить заказ"
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-700 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-40"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
             >
               {deleting
                 ? <div className="w-3 h-3 border border-slate-500 border-t-transparent rounded-full animate-spin" />
