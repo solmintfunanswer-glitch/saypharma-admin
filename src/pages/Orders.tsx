@@ -14,7 +14,6 @@ import { useState, useCallback, useEffect } from "react";
     delivered:   "Доставлен",
     cancelled:   "Отменён",
   };
-
   const STATUS_COLORS: Record<OrderStatus, string> = {
     new:         "bg-blue-500/15 text-blue-400 border-blue-500/30",
     accepted:    "bg-violet-500/15 text-violet-400 border-violet-500/30",
@@ -23,7 +22,6 @@ import { useState, useCallback, useEffect } from "react";
     delivered:   "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
     cancelled:   "bg-slate-500/15 text-slate-400 border-slate-500/30",
   };
-
   const NEXT_STATUSES: Record<OrderStatus, OrderStatus[]> = {
     new:         ["accepted", "cancelled"],
     accepted:    ["prepared", "cancelled"],
@@ -34,7 +32,6 @@ import { useState, useCallback, useEffect } from "react";
   };
 
   type FilterTab = "all" | OrderStatus | "archive";
-
   const TABS: { id: FilterTab; label: string }[] = [
     { id: "all",         label: "Все" },
     { id: "new",         label: "Новые" },
@@ -46,24 +43,19 @@ import { useState, useCallback, useEffect } from "react";
   ];
 
   function formatDate(iso: string) {
-    return new Date(iso).toLocaleString("ru-RU", {
-      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-    });
+    return new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   }
-
   const PAYMENT_METHODS = [
     { value: "cash",   label: "Наличные" },
     { value: "card",   label: "Карта" },
     { value: "online", label: "Онлайн" },
     { value: "kaspi",  label: "Kaspi" },
   ];
-
   function paymentLabel(v: string | null) {
     if (!v) return null;
     return PAYMENT_METHODS.find(m => m.value === v)?.label ?? v;
   }
 
-  /** Returns [created, skipped] counts for a single order's items */
   async function returnOrderItems(
     order: Order,
     products: Awaited<ReturnType<typeof getProducts>>
@@ -73,11 +65,8 @@ import { useState, useCallback, useEffect } from "react";
     const clientName = order.full_name ||
       [order.first_name, order.last_name].filter(Boolean).join(" ") ||
       order.phone;
-
     for (const item of items) {
       if (!item.quantity || item.quantity <= 0) { skipped++; continue; }
-
-      // Use product_id from item first, otherwise match by name
       let productId = item.product_id;
       if (!productId && item.name) {
         const match = products.find(
@@ -85,9 +74,7 @@ import { useState, useCallback, useEffect } from "react";
         );
         productId = match?.id;
       }
-
       if (!productId) { skipped++; continue; }
-
       await createStockMovement({
         product_id: productId,
         type: "in",
@@ -101,9 +88,7 @@ import { useState, useCallback, useEffect } from "react";
   }
 
   function OrderCard({ order, sym, isArchive, onStatusChange, onPaymentChange }: {
-    order: Order;
-    sym: string;
-    isArchive: boolean;
+    order: Order; sym: string; isArchive: boolean;
     onStatusChange: (id: string, s: OrderStatus) => Promise<string | null>;
     onPaymentChange: (id: string, p: string) => Promise<void>;
   }) {
@@ -114,14 +99,11 @@ import { useState, useCallback, useEffect } from "react";
     const next = NEXT_STATUSES[order.status];
 
     const change = async (s: OrderStatus) => {
-      setSaving(true);
-      setReturnInfo(null);
+      setSaving(true); setReturnInfo(null);
       const info = await onStatusChange(order.id, s);
       if (info) setReturnInfo(info);
-      setSaving(false);
-      setOpen(false);
+      setSaving(false); setOpen(false);
     };
-
     const changePayment = async (p: string) => {
       setSavingPayment(true);
       await onPaymentChange(order.id, p);
@@ -136,12 +118,8 @@ import { useState, useCallback, useEffect } from "react";
         <button onClick={() => setOpen(o => !o)} className="w-full px-4 pt-4 pb-3 flex items-start gap-3 text-left">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              {isArchive && (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-700/40 text-slate-500 border-slate-700/50">Архив</span>
-              )}
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLORS[order.status]}`}>
-                {STATUS_LABELS[order.status]}
-              </span>
+              {isArchive && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-slate-700/40 text-slate-500 border-slate-700/50">Архив</span>}
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${STATUS_COLORS[order.status]}`}>{STATUS_LABELS[order.status]}</span>
               <span className="text-slate-500 text-xs">{formatDate(order.created_at)}</span>
             </div>
             <p className={`font-medium text-sm truncate ${isArchive ? "text-slate-400" : "text-white"}`}>{clientName}</p>
@@ -155,17 +133,18 @@ import { useState, useCallback, useEffect } from "react";
                 {Number(order.total_amount).toLocaleString("ru-RU")} {sym}
               </p>
             )}
-            <svg className={`w-4 h-4 text-slate-600 mt-1 ml-auto transition-transform ${open ? "rotate-180" : ""}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className={`w-4 h-4 text-slate-600 mt-1 ml-auto transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m19 9-7 7-7-7" />
             </svg>
           </div>
         </button>
 
         {returnInfo && (
-          <div className="mx-4 mb-3 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-            <p className="text-emerald-400 text-xs">{returnInfo}</p>
-          </div>
+          <div className={`mx-4 mb-3 px-3 py-2 rounded-xl text-xs border ${
+            returnInfo.startsWith("Ошибка") || returnInfo.includes("не найдены")
+              ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+              : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+          }`}>{returnInfo}</div>
         )}
 
         {open && (
@@ -186,14 +165,12 @@ import { useState, useCallback, useEffect } from "react";
                 </div>
               </div>
             )}
-
             {order.comment && (
               <div>
                 <p className="text-slate-500 text-xs mb-1 uppercase tracking-wider">Комментарий</p>
                 <p className="text-slate-300 text-sm">{order.comment}</p>
               </div>
             )}
-
             {!isArchive && (
               <div>
                 <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Способ оплаты</p>
@@ -211,7 +188,6 @@ import { useState, useCallback, useEffect } from "react";
                 </div>
               </div>
             )}
-
             {!isArchive && next.length > 0 && (
               <div>
                 <p className="text-slate-500 text-xs mb-2 uppercase tracking-wider">Изменить статус</p>
@@ -243,15 +219,11 @@ import { useState, useCallback, useEffect } from "react";
     const [error, setError]     = useState<string | null>(null);
 
     const load = useCallback(async (filter: FilterTab) => {
-      setLoading(true);
-      setError(null);
+      setLoading(true); setError(null);
       try {
         const statusFilter: OrderStatus | undefined =
-          filter === "archive" ? "cancelled" :
-          filter === "all"     ? undefined :
-          filter as OrderStatus;
-        const data = await getOrders(statusFilter);
-        setOrders(data);
+          filter === "archive" ? "cancelled" : filter === "all" ? undefined : filter as OrderStatus;
+        setOrders(await getOrders(statusFilter));
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -261,34 +233,24 @@ import { useState, useCallback, useEffect } from "react";
 
     useEffect(() => { load(tab); }, [load, tab]);
 
-    const switchTab = (t: FilterTab) => { setTab(t); load(t); };
-
     const handleStatusChange = async (id: string, status: OrderStatus): Promise<string | null> => {
       await updateOrderStatus(id, status);
-
       if (status === "cancelled") {
         const order = orders.find(o => o.id === id);
         if (order && Array.isArray(order.items) && order.items.length > 0) {
           try {
-            const products = await getProducts();
-            const { created, skipped } = await returnOrderItems(order, products);
+            const prods = await getProducts();
+            const { created, skipped } = await returnOrderItems(order, prods);
             await load(tab);
-            if (created > 0) {
-              return `Возвращено на склад: ${created} позиций${skipped > 0 ? `, ${skipped} не найдено` : ""}`;
-            }
-            if (skipped > 0) {
-              return `Товары не найдены в справочнике (${skipped} позиций) — добавьте возврат вручную`;
-            }
+            if (created > 0) return `Возвращено на склад: ${created} позиций${skipped > 0 ? `, ${skipped} не найдено в справочнике` : ""}`;
+            return `Товары не найдены в справочнике (${skipped} поз.) — добавьте возврат вручную`;
           } catch (e) {
             await load(tab);
-            return `Ошибка возврата: ${(e as Error).message}`;
+            return `Ошибка возврата на склад: ${(e as Error).message}`;
           }
-        } else {
-          await load(tab);
         }
-      } else {
-        await load(tab);
       }
+      await load(tab);
       return null;
     };
 
@@ -311,22 +273,19 @@ import { useState, useCallback, useEffect } from "react";
             </div>
             <button onClick={() => load(tab)} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-300 transition-colors active:scale-95">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15" />
               </svg>
             </button>
           </div>
           <div className="max-w-2xl mx-auto px-4 pb-2">
             <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
               {TABS.map(t => (
-                <button key={t.id} onClick={() => switchTab(t.id)}
+                <button key={t.id} onClick={() => { setTab(t.id); load(t.id); }}
                   className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors whitespace-nowrap ${
                     tab === t.id
-                      ? t.id === "archive"
-                        ? "bg-slate-700/60 border-slate-600/60 text-slate-300"
-                        : t.id === "all"
-                          ? "bg-slate-700 border-slate-600 text-white"
-                          : STATUS_COLORS[t.id as OrderStatus]
+                      ? t.id === "archive" ? "bg-slate-700/60 border-slate-600/60 text-slate-300"
+                      : t.id === "all"     ? "bg-slate-700 border-slate-600 text-white"
+                      : STATUS_COLORS[t.id as OrderStatus]
                       : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700"
                   }`}>
                   {t.label}
@@ -342,11 +301,7 @@ import { useState, useCallback, useEffect } from "react";
               <p className="text-slate-500 text-xs">Отменённые заказы — товары возвращаются на склад автоматически</p>
             </div>
           )}
-          {loading && (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
+          {loading && <div className="flex items-center justify-center py-16"><div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" /></div>}
           {!loading && error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-center">
               <p className="text-red-400 text-sm">{error}</p>
