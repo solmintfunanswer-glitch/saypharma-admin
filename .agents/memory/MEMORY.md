@@ -1,2 +1,0 @@
-- [Vercel/v0 migration assumptions](vercel-migration-assumptions.md) — the generic migration task template assumes Next.js; verify actual framework before converting anything.
-- [Supabase-proxy allowlist bug pattern](supabase-allowlist-fields.md) — POST/PATCH field allowlists drift independently and silently drop fields; e2e-test create flows, not just update.

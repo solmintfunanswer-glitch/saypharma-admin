@@ -9,12 +9,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
   type ViewTab = "all" | MovementType | "balance" | "return";
 
-  const TYPE_LABELS: Record<MovementType, string> = { in: "Приход", out: "Расход", write_off: "Списание", return: "Возврат" };
+  const TYPE_LABELS: Record<MovementType, string> = { in: "Приход", out: "Расход", write_off: "Списание" };
   const TYPE_COLORS: Record<MovementType, string> = {
     in:        "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     out:       "bg-blue-500/10 text-blue-400 border-blue-500/20",
     write_off: "bg-red-500/10 text-red-400 border-red-500/20",
-    return:    "bg-amber-500/10 text-amber-400 border-amber-500/20",
   };
 
   const EMPTY_FORM = {
