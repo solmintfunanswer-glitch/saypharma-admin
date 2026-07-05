@@ -16,8 +16,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
     const filters: string[] = ["order=called_at.desc"];
     if (phone)       filters.push(`phone=ilike.*${encodeURIComponent(phone)}*`);
     if (client_name) filters.push(`client_name=ilike.*${encodeURIComponent(client_name)}*`);
-    if (date_from)   filters.push(`called_at=gte.${date_from}`);
-    if (date_to)     filters.push(`called_at=lte.${date_to}T23:59:59`);
+    if (date_from)   filters.push(`called_at=gte.${encodeURIComponent(date_from)}`);
+    if (date_to)     filters.push(`called_at=lte.${encodeURIComponent(`${date_to}T23:59:59`)}`);
 
     const resp = await fetch(`${url}/rest/v1/call_transcripts?select=*&${filters.join("&")}`, { headers: h });
     const transcripts: Record<string, unknown>[] = await resp.json();
@@ -31,8 +31,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
     if (callIds.length > 0 || orderIds.length > 0) {
       const orParts: string[] = [];
-      if (callIds.length  > 0) orParts.push(`call_id.in.(${callIds.join(",")})`);
-      if (orderIds.length > 0) orParts.push(`id.in.(${orderIds.join(",")})`);
+      if (callIds.length  > 0) orParts.push(`call_id.in.(${callIds.map(encodeURIComponent).join(",")})`);
+      if (orderIds.length > 0) orParts.push(`id.in.(${orderIds.map(encodeURIComponent).join(",")})`);
 
       const oResp = await fetch(
         `${url}/rest/v1/orders?select=id,status,total_amount,call_id&or=(${orParts.join(",")})`,
