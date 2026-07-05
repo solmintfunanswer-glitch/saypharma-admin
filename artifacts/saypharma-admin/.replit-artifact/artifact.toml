@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "SayPharma Admin"
+version = "1.0.0"
+id = "artifacts/saypharma-admin"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20793
+
+[services.development]
+run = "pnpm --filter @workspace/saypharma-admin run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/saypharma-admin", "run", "build" ]
+publicDir = "artifacts/saypharma-admin/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20793"
+BASE_PATH = "/"
