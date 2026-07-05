@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-  const ALLOWED_FIELDS = ["name","active_substance","form","country","age_category",
+  const ALLOWED_FIELDS = ["name","price","active_substance","form","country","age_category",
     "prescription_required","dosage","side_effects","description","image_url"];
 
   export default async function handler(req: VercelRequest, res: VercelResponse) {
